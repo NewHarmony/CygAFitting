@@ -25,7 +25,7 @@ class PoissonPosterior(object):
 
 
         # Check if lengths of the data list, model list and the prior arrays are the same
-        if not all(x == self.regnr for x in (len(d), len(m), kT_prior.shape[0], kT_prior.shape[0])):
+        if not all(x == self.regnr for x in (len(d), len(m), kT_prior.shape[0], Z_prior.shape[0])):
             sys.exit('Error: length of data list, model list, and prior arrays must be the same')
         return
     
@@ -34,7 +34,7 @@ class PoissonPosterior(object):
         pars_list[:,3] = pars_list[0,3] # PI shared between all lobe regions
 
         # Iterate over individual lobe region log-likelihoods and sum
-        lobe_res = 0 #
+        lobe_res = 0
         for i, item in enumerate(self.lobe_data):
             
             model = self.lobe_models[i]
@@ -67,7 +67,6 @@ class PoissonPosterior(object):
             mu_kT = kT_prior[i,0]
             sigma_kT = kT_prior[i,1]
             p_kT = gaussian(kT, mu_kT, sigma_kT)
-            if i==2: print kT, mu_kT, sigma_kT, p_kT
 
             Z = pars[1]
             mu_Z = Z_prior[i,0]
@@ -224,12 +223,4 @@ fitmethod = scipy.optimize.minimize
 neg = False
 results = fitmethod(lpost,x0=initial_guess,method='Nelder-mead', args=(neg,))
 print results
-#results = results[0:15].reshape(3,5)
-#print results[:,0]
-#print results[:,1]
-#print results[:,2]
-#print results[:,3]
-#print results[:,4]
 
-#print('Optimum parameter values: ' + str(popt))
-#print('Likelihood at optimimum parameter values: ' + str(fopt))

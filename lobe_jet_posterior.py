@@ -54,8 +54,7 @@ class PoissonPosterior(object):
 
     def jet_logprior(self, pars_array):
     
-        # This whole thing is still wrong
-        # Iterate over individual jet region log-priors and sum
+        # Iterate over individual jet region log priors and sum
         logprior = 0
         for i, item in enumerate(self.jet_data):
             
@@ -66,7 +65,6 @@ class PoissonPosterior(object):
             mu_kT = kT_prior[i,0]
             sigma_kT = kT_prior[i,1]
             p_kT = gaussian(kT, mu_kT, sigma_kT)
-            if i==2: print kT, mu_kT, sigma_kT, p_kT
             
             Z = pars[1]
             mu_Z = Z_prior[i,0]
@@ -74,11 +72,9 @@ class PoissonPosterior(object):
             p_Z = gaussian(kT, mu_Z, sigma_Z)
             
             T_lognorm = np.log10(pars[2])
-            #if np.isnan(T_lognorm)==True: T_lognorm = -4
             p_Tnorm = ((T_lognorm > -7) & (T_lognorm < -3))
             
             PL1_lognorm = np.log10(pars[4])
-            #if  np.isnan(PL_lognorm) == True: PL_lognorm == -5
             p_PL1norm = ((PL1_lognorm > -7) & (PL1_lognorm <-3))
             
             PL2_lognorm = np.log10(pars[6])
@@ -137,7 +133,6 @@ class PoissonPosterior(object):
             mu_kT = kT_prior[i,0]
             sigma_kT = kT_prior[i,1]
             p_kT = gaussian(kT, mu_kT, sigma_kT)
-            if i==2: print kT, mu_kT, sigma_kT, p_kT
 
             Z = pars[1]
             mu_Z = Z_prior[i,0]
@@ -145,11 +140,9 @@ class PoissonPosterior(object):
             p_Z = gaussian(kT, mu_Z, sigma_Z)
             
             T_lognorm = np.log10(pars[2])
-            #if np.isnan(T_lognorm)==True: T_lognorm = -4
             p_Tnorm = ((T_lognorm > -7) & (T_lognorm < -3))
             
             PL_lognorm = np.log10(pars[4])
-            #if  np.isnan(PL_lognorm) == True: PL_lognorm == -5
             p_PLnorm = ((PL_lognorm > -7) & (PL_lognorm <-3))
             
             print p_kT, p_Z, p_Tnorm, p_PLnorm
@@ -320,12 +313,4 @@ neg = False
 print init_guess
 results = fitmethod(lpost,x0=init_guess,method='Nelder-mead', args=(neg,))
 print results
-#results = results[0:15].reshape(3,5)
-#print results[:,0]
-#print results[:,1]
-#print results[:,2]
-#print results[:,3]
-#print results[:,4]
 
-#print('Optimum parameter values: ' + str(popt))
-#print('Likelihood at optimimum parameter values: ' + str(fopt))
