@@ -77,13 +77,13 @@ class PoissonPosterior(object):
             mu_kT = kT_prior[i,0]
             sigma_kT = kT_prior[i,1]
             p_kT = norm.pdf(kT, loc=mu_kT, scale=sigma_kT)
-            #if (kT > mu_kT+1.5) or (kT < mu_kT-1.5): p_kT = 0
+            if (kT > mu_kT+1.5) or (kT < mu_kT-1.5): p_kT = 0
 
             Z = pars[1]
             mu_Z = Z_prior[i,0]
             sigma_Z = Z_prior[i,1]
             p_Z = norm.pdf(Z, loc=mu_Z, scale=sigma_Z)
-            #if Z < mu_Z -0.2 or Z > mu_Z+0.2: p_Z = 0
+            if Z < 0 or Z >1 : p_Z = 0
 
             T_lognorm = np.log10(pars[2])
             p_Tnorm = ((T_lognorm > -7) & (T_lognorm < -3))
