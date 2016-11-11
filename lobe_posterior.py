@@ -30,11 +30,10 @@ class PoissonPosterior(object):
 
         # Check if lengths of the data list, model list and the prior arrays are the same
         if not all(x == self.regnr for x in (len(d), len(m), len(rmf), kT_prior.shape[0], Z_prior.shape[0])):
-            sys.exit('Error: length of data list, model list, and prior arrays must be the same')
+            raise Exception('Error: length of data list, model list, and prior arrays must be the same')
         return
     
     def loglikelihood(self, pars_list, neg=False):
-
 
         pars_list[:,3] = pars_list[0,3] # PI shared between all lobe regions
 
@@ -50,6 +49,11 @@ class PoissonPosterior(object):
             data = self.lobe_data[i]
             pars = pars_list[i,:]
             
+            # assume that normalizations are in log, so we'll exponentiate them:
+            pars[2] = np.exp(pars[2])
+            pars[4] = np.exp(pars[4])
+            # MARTIJN: PLEASE CHECK WHETHER THIS IS CORRECT!         
+   
             model._set_thawed_pars(pars)
             mean_model = data.eval_model(model)
             
@@ -57,11 +61,18 @@ class PoissonPosterior(object):
             mean_model += np.exp(-20.)
             res = np.nansum(-mean_model[bounds] + data.counts[bounds]*np.log(mean_model[bounds]) -  scipy_gammaln(data.counts[bounds] + 1.))
             if not np.isfinite(res):
-                res = logmin
+                # pretty sure this should be -logmin instead of logmin:
+                # if the likelihood is NaN or inf, it should become really small, so that 
+                # these parameters aren't chosen.
+                res = -logmin
             lobe_res += res
 
-        print 'log likelihood', lobe_res
-        return lobe_res
+        print('log likelihood' + str(lobe_res))
+
+        if neg:
+            return -lobe_res
+        else:
+            return lobe_res
 
     def logprior(self, pars_array):
     
@@ -85,10 +96,10 @@ class PoissonPosterior(object):
             p_Z = norm.pdf(Z, loc=mu_Z, scale=sigma_Z)
             if Z < 0 or Z >1 : p_Z = 0
 
-            T_lognorm = np.log10(pars[2])
+            T_lognorm = pars[2] #np.log(pars[2])
             p_Tnorm = ((T_lognorm > -7) & (T_lognorm < -3))
             
-            PL_lognorm = np.log10(pars[4])
+            PL_lognorm = pars[4] #np.log(pars[4])
             p_PLnorm = ((PL_lognorm > -9) & (PL_lognorm <-4))
             
             #print 'Priors:', p_kT, p_Z, p_Tnorm, p_PLnorm
@@ -111,21 +122,21 @@ class PoissonPosterior(object):
             logprior += -logmin
         else:
             logprior += logprior_PI
-        print 'Log prior', logprior
+        print('Log prior' + str(logprior))
         return logprior
 
     def logposterior(self, pars_array, neg=False):
         # reshape pars_array into a 2D array because scipy.optimize only accepts 1D array
 
         pars_array = pars_array.reshape(self.regnr,5) # 5=nr of lobe region thawed params
-        lpost = self.loglikelihood(pars_array) + self.logprior(pars_array)
+        lpost = self.loglikelihood(pars_array, neg=False) + self.logprior(pars_array)
         
     
         if neg is True:
-            print 'lpost ', -lpost
+            print('lpost ' + str(-lpost))
             return -lpost
         else:
-            print 'lpost', lpost
+            print('lpost' + str(lpost))
             return lpost
     
     def __call__(self, pars_array, neg=False):
@@ -238,16 +249,16 @@ results = fitmethod(lpost,x0=initial_guess,method='Nelder-mead', options={'maxit
 #results = fitmethod(lpost,x0=initial_guess, maxiter=200, args=(neg,))
 
 
-print lpost(results.x, neg=neg)
-print 'Results :'
+print(lpost(results.x, neg=neg))
+print('Results :')
 
 pars = results.x.reshape(regnr,5)
-
-print 'Temperatures:', pars[:,0]
-print 'Abundances:' , pars[:,1]
-print 'Therm Norm:', pars[:,2]
-print 'PI', pars[0,3]
-print 'PL Norm:', pars[:,4]
+ 
+print('Temperatures:', pars[:,0])
+print('Abundances:' , pars[:,1])
+print('Therm Norm:', pars[:,2])
+print('PI', pars[0,3])
+print('PL Norm:', pars[:,4])
 
 # Plot of fits
 for i, item in enumerate(lobe_data):
