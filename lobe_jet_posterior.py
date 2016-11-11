@@ -2,7 +2,7 @@
 
 import logging
 import numpy as np
-import scipy.stats
+from scipy.stats import norm
 import scipy.optimize
 from scipy.special import gammaln as scipy_gammaln
 from sherpa.astro.ui import *
@@ -14,14 +14,19 @@ import sys
 logmin = 100000000000.0
 class PoissonPosterior(object):
     
-    def __init__(self, l_d, l_m, j_d, j_m, kT_prior, Z_prior):
+    def __init__(self, l_d, l_m, l_rmf, j_d, j_m, j_rmf, kT_prior, Z_prior):
         # lobe_data, lobe_models etc are lists of the data/models for each lobe/jet region
         self.lobe_data = l_d
         self.lobe_models = l_m
+        self.lobe_rmf = l_rmf
         self.jet_data = j_d
         self.jet_models = j_m
+        self.jet_rmf = j_rmf
         self.kT_prior = kT_prior
         self.Z_prior = Z_prior
+        self.e_min = 0.5
+        self.e_max = 7.0 # energy range to fit
+
         self.regnr = len(l_d) # amount of lobe/jet regions
 
 
@@ -36,6 +41,10 @@ class PoissonPosterior(object):
         jet_res = 0 #
         for i, item in enumerate(self.jet_data):
             
+            rmf = jet_data[i].get_rmf()
+            erange = np.array(rmf.e_min) # need to convert to numpy array to use a double mask
+            bounds = (erange > self.e_min) & (erange < self.e_max)
+            
             model = self.jet_models[i]
             data = self.jet_data[i]
             pars = pars_list[i,:]
@@ -45,7 +54,7 @@ class PoissonPosterior(object):
             
             #stupid hack to make it not go -infinity
             mean_model += np.exp(-20.)
-            res = np.nansum(-mean_model + data.counts*np.log(mean_model) -  scipy_gammaln(data.counts + 1.))
+            res = np.nansum(-mean_model[bounds] + data.counts[bounds]*np.log(mean_model[bounds]) -  scipy_gammaln(data.counts[bounds] + 1.))
             if not np.isfinite(res):
                 res = logmin
             jet_res += res
@@ -64,12 +73,12 @@ class PoissonPosterior(object):
             kT = pars[0]
             mu_kT = kT_prior[i,0]
             sigma_kT = kT_prior[i,1]
-            p_kT = gaussian(kT, mu_kT, sigma_kT)
+            p_kT = norm.pdf(kT, loc=mu_kT, scale=sigma_kT)
             
             Z = pars[1]
             mu_Z = Z_prior[i,0]
             sigma_Z = Z_prior[i,1]
-            p_Z = gaussian(kT, mu_Z, sigma_Z)
+            p_Z = norm.pdf(Z, loc=mu_Z, scale=sigma_Z)
             
             T_lognorm = np.log10(pars[2])
             p_Tnorm = ((T_lognorm > -7) & (T_lognorm < -3))
@@ -103,6 +112,10 @@ class PoissonPosterior(object):
         lobe_res = 0 #
         for i, item in enumerate(self.lobe_data):
             
+            rmf = lobe_data[i].get_rmf()
+            erange = np.array(rmf.e_min) # need to convert to numpy array to use a double mask
+            bounds = (erange > self.e_min) & (erange < self.e_max)
+            
             model = self.lobe_models[i]
             data = self.lobe_data[i]
             pars = pars_list[i,:]
@@ -112,7 +125,7 @@ class PoissonPosterior(object):
             
             #stupid hack to make it not go -infinity
             mean_model += np.exp(-20.)
-            res = np.nansum(-mean_model + data.counts*np.log(mean_model) -  scipy_gammaln(data.counts + 1.))
+            res = np.nansum(-mean_model[bounds] + data.counts[bounds]*np.log(mean_model[bounds]) -  scipy_gammaln(data.counts[bounds] + 1.))
             if not np.isfinite(res):
                 res = logmin
             lobe_res += res
@@ -132,18 +145,18 @@ class PoissonPosterior(object):
             kT = pars[0]
             mu_kT = kT_prior[i,0]
             sigma_kT = kT_prior[i,1]
-            p_kT = gaussian(kT, mu_kT, sigma_kT)
+            p_kT = norm.pdf(kT, loc=mu_kT, scale=sigma_kT)
 
             Z = pars[1]
             mu_Z = Z_prior[i,0]
             sigma_Z = Z_prior[i,1]
-            p_Z = gaussian(kT, mu_Z, sigma_Z)
+            p_Z = norm.pdf(Z, loc=mu_Z, scale=sigma_Z)
             
             T_lognorm = np.log10(pars[2])
-            p_Tnorm = ((T_lognorm > -7) & (T_lognorm < -3))
+            p_Tnorm = ((T_lognorm > -15) & (T_lognorm < -3))
             
             PL_lognorm = np.log10(pars[4])
-            p_PLnorm = ((PL_lognorm > -7) & (PL_lognorm <-3))
+            p_PLnorm = ((PL_lognorm > -15) & (PL_lognorm <-3))
             
             print p_kT, p_Z, p_Tnorm, p_PLnorm
             
@@ -189,11 +202,6 @@ class PoissonPosterior(object):
     
     def __call__(self, pars_array, neg=False):
         return self.logposterior(pars_array, neg)
-
-
-def gaussian(x, mu, sigma):
-    return 1./(np.sqrt(2*np.pi*sigma**2)) * np.exp(- (x - mu)**2/(2*sigma)**2)
-
 
 logger = logging.getLogger("sherpa") #Logger to suppress sherpa output when loading spectra
 
@@ -259,40 +267,44 @@ Z_prior = np.zeros((regnr,2))
 
 # build kT_prior and Z_prior matrices (i,0 = mu; i,1 = sigma)
 # Simplified version for now: kT_avg = (kT_1 + kT_2)/2
-# fkT_avg = fkT_1 + (kT_avg - kT_1)
+# fkT_avg = fkT_1 + abs(kT_avg - kT_1)
 # Maybe its better to just do a joint fit to the top and bottom thermal region
 for i in range(regnr):
     j = i*6
     
     kT_avg = (covar_result.parvals[0+j] + covar_result.parvals[3+j])/2.
     kT_prior[i, 0] = kT_avg
-    fkT_avg = covar_result.parmaxes[0+j] + (kT_avg - covar_result.parvals[0+j])
-    kT_prior[i, 1] = fkT_avg
+    fkT_avg = covar_result.parmaxes[0+j] + (np.abs(kT_avg - covar_result.parvals[0+j]))
+    kT_prior[i, 1] = fkT_avg/2
     
     Z_avg = (covar_result.parvals[1+j] + covar_result.parvals[4+j])/2.
     Z_prior[i, 0] = Z_avg
-    fZ_avg = covar_result.parmaxes[1+j] + (Z_avg - covar_result.parvals[1+j])
-    Z_prior[i, 1] =  fZ_avg
-    
+    fZ_avg = covar_result.parmaxes[1+j] + (np.abs(Z_avg - covar_result.parvals[1+j]))
+    Z_prior[i, 1] =  fZ_avg/2
 
 
-# Make the data list and model list of the jet and lobe regions
+# Make the data, model and rmf lists of the jet and lobe regions
 lobe_data = []
 lobe_models = []
+lobe_rmf = []
 jet_data = []
 jet_models = []
+jet_rmf = []
+
 for i in range(regnr):
     
     lobe_nr = 4*i + 2
     lobe_data.append(get_data(lobe_nr))
     lobe_models.append(get_model(lobe_nr))
+    lobe_rmf.append(get_rmf(lobe_nr))
 
     jet_nr = 4*i + 3
     jet_data.append(get_data(jet_nr))
     jet_models.append(get_model(jet_nr))
+    jet_rmf.append(get_rmf(jet_nr))
 
 
-lpost = PoissonPosterior(lobe_data, lobe_models, jet_data, jet_models, kT_prior, Z_prior)
+lpost = PoissonPosterior(lobe_data, lobe_models, lobe_rmf, jet_data, jet_models, jet_rmf, kT_prior, Z_prior)
 
 lobe_guess = np.zeros((regnr,5))
 

@@ -1,8 +1,9 @@
 #!usr/bin/env python
 
 import logging
+from matplotlib import pyplot as plt
 import numpy as np
-import scipy.stats
+from scipy.stats import norm
 import scipy.optimize
 from scipy.special import gammaln as scipy_gammaln
 from sherpa.astro.ui import *
@@ -15,27 +16,36 @@ logger = logging.getLogger("sherpa") #Logger to suppress sherpa output when load
 logmin = 100000000000.0
 class PoissonPosterior(object):
     
-    def __init__(self, d, m, kT_prior, Z_prior):
+    def __init__(self, d, m, rmf,  kT_prior, Z_prior):
         # lobe_data and lobe_models are lists
         self.lobe_data = d
         self.lobe_models = m
+        self.lobe_rmf = rmf
         self.kT_prior = kT_prior
         self.Z_prior = Z_prior
+        self.e_min = 0.5
+        self.e_max = 7.0 # energy range to fit
         self.regnr = len(d) # amount of lobe regions
 
 
         # Check if lengths of the data list, model list and the prior arrays are the same
-        if not all(x == self.regnr for x in (len(d), len(m), kT_prior.shape[0], Z_prior.shape[0])):
+        if not all(x == self.regnr for x in (len(d), len(m), len(rmf), kT_prior.shape[0], Z_prior.shape[0])):
             sys.exit('Error: length of data list, model list, and prior arrays must be the same')
         return
     
     def loglikelihood(self, pars_list, neg=False):
-        
+
+
+
         pars_list[:,3] = pars_list[0,3] # PI shared between all lobe regions
 
         # Iterate over individual lobe region log-likelihoods and sum
         lobe_res = 0
         for i, item in enumerate(self.lobe_data):
+            
+            rmf = lobe_data[i].get_rmf()
+            erange = np.array(rmf.e_min) # need to convert to numpy array to use a double mask
+            bounds = (erange > self.e_min) & (erange < self.e_max)
             
             model = self.lobe_models[i]
             data = self.lobe_data[i]
@@ -46,7 +56,7 @@ class PoissonPosterior(object):
             
             #stupid hack to make it not go -infinity
             mean_model += np.exp(-20.)
-            res = np.nansum(-mean_model + data.counts*np.log(mean_model) -  scipy_gammaln(data.counts + 1.))
+            res = np.nansum(-mean_model[bounds] + data.counts[bounds]*np.log(mean_model[bounds]) -  scipy_gammaln(data.counts[bounds] + 1.))
             if not np.isfinite(res):
                 res = logmin
             lobe_res += res
@@ -66,20 +76,18 @@ class PoissonPosterior(object):
             kT = pars[0]
             mu_kT = kT_prior[i,0]
             sigma_kT = kT_prior[i,1]
-            p_kT = gaussian(kT, mu_kT, sigma_kT)
+            p_kT = norm.pdf(kT, loc=mu_kT, scale=sigma_kT)
 
             Z = pars[1]
             mu_Z = Z_prior[i,0]
             sigma_Z = Z_prior[i,1]
-            p_Z = gaussian(kT, mu_Z, sigma_Z)
-            
+            p_Z = norm.pdf(Z, loc=mu_Z, scale=sigma_Z)
+
             T_lognorm = np.log10(pars[2])
-            #if np.isnan(T_lognorm)==True: T_lognorm = -4
             p_Tnorm = ((T_lognorm > -7) & (T_lognorm < -3))
             
             PL_lognorm = np.log10(pars[4])
-            #if  np.isnan(PL_lognorm) == True: PL_lognorm == -5
-            p_PLnorm = ((PL_lognorm > -7) & (PL_lognorm <-3))
+            p_PLnorm = ((PL_lognorm > -9) & (PL_lognorm <-4))
             
             print p_kT, p_Z, p_Tnorm, p_PLnorm
             
@@ -101,7 +109,6 @@ class PoissonPosterior(object):
         # reshape pars_array into a 2D array because scipy.optimize only accepts 1D array
 
         pars_array = pars_array.reshape(self.regnr,5) # 5=nr of lobe region thawed params
-    
         lpost = self.loglikelihood(pars_array) + self.logprior(pars_array)
         
         if neg is True:
@@ -167,11 +174,12 @@ set_stat('chi2xspecvar')
 set_method('levmar')
 
 # Fit thermal region spectra for temperature/abundance priors
+
 fit_array = [0,1,4,5,8,9]
 for i in fit_array:
     fit(i)
 
-#covar(5)
+covar(5)
 
 covar(0,1,4,5,8,9)
 covar_result = get_covar_results()
@@ -179,40 +187,50 @@ covar_result = get_covar_results()
 # lobe get data and models
 lobe_data = []
 lobe_models = []
+lobe_rmf = []
 
-regnr = 3
+regnr = 3 # hardcoded for now, will change later..
+
 
 kT_prior = np.zeros((regnr, 2))
 Z_prior = np.zeros((regnr,2))
 
 # build kT_prior and Z_prior matrices (i,0 = mu; i,1 = sigma)
 # Simplified version for now: kT_avg = (kT_1 + kT_2)/2
-# fkT_avg = fkT_1 + (kT_avg - kT_1)
+# fkT_avg = fkT_1 + abs((kT_avg - kT_1))
 # Maybe its better to just do a joint fit to the top and bottom thermal region
 for i in range(regnr):
     j = i*6
     
     kT_avg = (covar_result.parvals[0+j] + covar_result.parvals[3+j])/2.
     kT_prior[i, 0] = kT_avg
-    fkT_avg = covar_result.parmaxes[0+j] + (kT_avg - covar_result.parvals[0+j])
-    kT_prior[i, 1] = fkT_avg
+    fkT_avg = covar_result.parmaxes[0+j] + (np.abs(kT_avg - covar_result.parvals[0+j]))
+    kT_prior[i, 1] = fkT_avg/2
     
     Z_avg = (covar_result.parvals[1+j] + covar_result.parvals[4+j])/2.
     Z_prior[i, 0] = Z_avg
-    fZ_avg = covar_result.parmaxes[1+j] + (Z_avg - covar_result.parvals[1+j])
-    Z_prior[i, 1] =  fZ_avg
+    fZ_avg = covar_result.parmaxes[1+j] + (np.abs(Z_avg - covar_result.parvals[1+j]))
+    Z_prior[i, 1] =  fZ_avg/2
     
-
-print kT_prior,
-print '_______'
-print Z_prior
 # Make the data list and model list of the lobe regions
 for i in range(regnr):
     lobe_nr = 4*i + 2
     lobe_data.append(get_data(lobe_nr))
     lobe_models.append(get_model(lobe_nr))
+    lobe_rmf.append(get_rmf(lobe_nr))
 
-lpost = PoissonPosterior(lobe_data, lobe_models, kT_prior, Z_prior)
+
+"""
+# just to show that the current normalizations that scipy.optimize finds are way off
+plt.plot(lobe_rmf[0].e_min, lobe_data[0].counts)
+lobe_models[0]._set_thawed_pars([7.71899601e+00,   1.35331462e+00,   1.00022311e-04,2.10952456e+00,   2.05163680e-05])
+model_counts = lobe_data[0].eval_model(lobe_models[0])
+plt.plot(lobe_rmf[0].e_min, model_counts)
+plt.yscale('log')
+plt.show()
+"""
+
+lpost = PoissonPosterior(lobe_data, lobe_models, lobe_rmf, kT_prior, Z_prior)
 initial_guess = np.zeros((regnr,5))
 
 for i in range(regnr): # reasonable initial guesses
