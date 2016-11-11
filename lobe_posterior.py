@@ -36,7 +36,6 @@ class PoissonPosterior(object):
     def loglikelihood(self, pars_list, neg=False):
 
 
-
         pars_list[:,3] = pars_list[0,3] # PI shared between all lobe regions
 
         # Iterate over individual lobe region log-likelihoods and sum
@@ -77,11 +76,13 @@ class PoissonPosterior(object):
             mu_kT = kT_prior[i,0]
             sigma_kT = kT_prior[i,1]
             p_kT = norm.pdf(kT, loc=mu_kT, scale=sigma_kT)
+            if (kT > mu_kT+1) or (kT < mu_kT-1): p_kT = 0
 
             Z = pars[1]
             mu_Z = Z_prior[i,0]
             sigma_Z = Z_prior[i,1]
             p_Z = norm.pdf(Z, loc=mu_Z, scale=sigma_Z)
+            if Z < mu_Z -0.2 or Z > mu_Z+0.2: p_Z = 0
 
             T_lognorm = np.log10(pars[2])
             p_Tnorm = ((T_lognorm > -7) & (T_lognorm < -3))
@@ -101,7 +102,7 @@ class PoissonPosterior(object):
         logprior += np.log(p_PI)
         
         if not np.isfinite(logprior):
-            return logmin
+            return -logmin
         else:
             return logprior
 
@@ -120,10 +121,6 @@ class PoissonPosterior(object):
     
     def __call__(self, pars_array, neg=False):
         return self.logposterior(pars_array, neg)
-
-
-def gaussian(x, mu, sigma):
-    return 1./(np.sqrt(2*np.pi*sigma**2)) * np.exp(- (x - mu)**2/(2*sigma)**2)
 
 
 # switch off sherpa file-loading output
@@ -179,8 +176,6 @@ fit_array = [0,1,4,5,8,9]
 for i in fit_array:
     fit(i)
 
-covar(5)
-
 covar(0,1,4,5,8,9)
 covar_result = get_covar_results()
 
@@ -220,25 +215,44 @@ for i in range(regnr):
     lobe_rmf.append(get_rmf(lobe_nr))
 
 
-"""
-# just to show that the current normalizations that scipy.optimize finds are way off
-plt.plot(lobe_rmf[0].e_min, lobe_data[0].counts)
-lobe_models[0]._set_thawed_pars([7.71899601e+00,   1.35331462e+00,   1.00022311e-04,2.10952456e+00,   2.05163680e-05])
-model_counts = lobe_data[0].eval_model(lobe_models[0])
-plt.plot(lobe_rmf[0].e_min, model_counts)
-plt.yscale('log')
-plt.show()
-"""
-
 lpost = PoissonPosterior(lobe_data, lobe_models, lobe_rmf, kT_prior, Z_prior)
 initial_guess = np.zeros((regnr,5))
 
 for i in range(regnr): # reasonable initial guesses
     initial_guess[i,:] = [6.0, 0.5, 1e-4, 1.6, 1e-5]
 
-# Scipy optimize test
+# Optimization routine
 fitmethod = scipy.optimize.minimize
-neg = False
-results = fitmethod(lpost,x0=initial_guess,method='Nelder-mead', args=(neg,))
-print results
+neg = True
+results = fitmethod(lpost,x0=initial_guess,method='Nelder-mead', options={'maxiter':5000}, args=(neg,))
+
+print 'Results :'
+pars = results.x.reshape(regnr,5)
+
+print 'Temperatures:', pars[:,0]
+print 'Abundances:' , pars[:,1]
+print 'Therm Norm:', pars[:,2]
+print 'PI', pars[0,3]
+print 'PL Norm:', pars[:,4]
+# Plot of fits
+for i, item in enumerate(lobe_data):
+    ax = plt.subplot('22' + str(i))
+    
+    # Plot data
+    ax.plot(lobe_rmf[i].e_min, lobe_data[i].counts, label='Data')
+    
+    # Plot model with pars from scipy.optimize
+    lobe_models[i]._set_thawed_pars(results.x[i*5:(i*5)+5])
+    model_counts = lobe_data[i].eval_model(lobe_models[i])
+    ax.plot(lobe_rmf[i].e_min, model_counts, label='Model')
+    
+    ax.set_xlabel('Energy [keV]')
+    ax.set_ylabel('Counts')
+    ax.set_yscale('log')
+    ax.set_xlim(0.5, 8)
+    ax.set_ylim(0.1, 1000)
+    ax.set_title('Lobe region ' + str(i))
+
+plt.legend()
+plt.show()
 

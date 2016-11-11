@@ -2,6 +2,7 @@
 
 import logging
 import numpy as np
+from matplotlib import pyplot as plt
 from scipy.stats import norm
 import scipy.optimize
 from scipy.special import gammaln as scipy_gammaln
@@ -74,12 +75,14 @@ class PoissonPosterior(object):
             mu_kT = kT_prior[i,0]
             sigma_kT = kT_prior[i,1]
             p_kT = norm.pdf(kT, loc=mu_kT, scale=sigma_kT)
-            
+            if (kT > 10.0) or (kT < 0): p_kT = 0
+
             Z = pars[1]
             mu_Z = Z_prior[i,0]
             sigma_Z = Z_prior[i,1]
             p_Z = norm.pdf(Z, loc=mu_Z, scale=sigma_Z)
-            
+            if Z < 0 or Z > 1.0: p_Z = 0
+
             T_lognorm = np.log10(pars[2])
             p_Tnorm = ((T_lognorm > -7) & (T_lognorm < -3))
             
@@ -102,7 +105,7 @@ class PoissonPosterior(object):
         logprior += np.log(p_PI1 * p_PI2)
 
         if not np.isfinite(logprior):
-            return logmin
+            return -logmin
         else:
             return logprior
 
@@ -146,12 +149,14 @@ class PoissonPosterior(object):
             mu_kT = kT_prior[i,0]
             sigma_kT = kT_prior[i,1]
             p_kT = norm.pdf(kT, loc=mu_kT, scale=sigma_kT)
+            if (kT > 10.0) or (kT < 0): p_kT = 0
 
             Z = pars[1]
             mu_Z = Z_prior[i,0]
             sigma_Z = Z_prior[i,1]
             p_Z = norm.pdf(Z, loc=mu_Z, scale=sigma_Z)
-            
+            if Z < 0 or Z > 1.0: p_Z = 0
+
             T_lognorm = np.log10(pars[2])
             p_Tnorm = ((T_lognorm > -15) & (T_lognorm < -3))
             
@@ -170,7 +175,7 @@ class PoissonPosterior(object):
         logprior += np.log(p_PI)
         
         if not np.isfinite(logprior):
-            return logmin
+            return -logmin
         else:
             return logprior
 
@@ -319,10 +324,43 @@ for i in range(regnr): # reasonable initial guesses for jet params
 init_guess = np.hstack((lobe_guess.flatten(), jet_guess.flatten()))
 
 
-# Scipy optimize test
+# Optimization routine
 fitmethod = scipy.optimize.minimize
-neg = False
-print init_guess
-results = fitmethod(lpost,x0=init_guess,method='Nelder-mead', args=(neg,))
-print results
+neg = True
+results = fitmethod(lpost,x0=init_guess,method='Nelder-mead', options={'maxiter':5000}, args=(neg,))
+
+print 'Results :'
+lobe_results = results.x[0:regnr*5]
+
+pars = lobe_results.reshape(regnr,5)
+
+print 'Temperatures:', pars[:,0]
+print 'Abundances:' , pars[:,1]
+print 'Therm Norm:', pars[:,2]
+print 'PI', pars[0,3]
+print 'PL Norm:', pars[:,4]
+
+# Plot of fits (just lobe regions for now)
+for i, item in enumerate(lobe_data):
+    ax = plt.subplot('22' + str(i))
+    
+    # Plot data
+    ax.plot(lobe_rmf[i].e_min, lobe_data[i].counts, label='Data')
+    
+    # Plot model with pars from scipy.optimize
+    lobe_models[i]._set_thawed_pars(results.x[i*5:(i*5)+5])
+    model_counts = lobe_data[i].eval_model(lobe_models[i])
+    ax.plot(lobe_rmf[i].e_min, model_counts, label='Model')
+    
+    ax.set_xlabel('Energy [keV]')
+    ax.set_ylabel('Counts')
+    ax.set_yscale('log')
+    ax.set_xlim(0.5, 8)
+    ax.set_ylim(0.1, 1000)
+    ax.set_title('Lobe region ' + str(i))
+
+plt.legend()
+plt.show()
+
+
 
