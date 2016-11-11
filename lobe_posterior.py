@@ -13,7 +13,7 @@ import sys
 logger = logging.getLogger("sherpa") #Logger to suppress sherpa output when loading spectra
 
 # Only lobe regions so far (will expand later)
-logmin = 100000000000.0
+logmin = 1000000000.0
 class PoissonPosterior(object):
     
     def __init__(self, d, m, rmf,  kT_prior, Z_prior):
@@ -60,6 +60,7 @@ class PoissonPosterior(object):
                 res = logmin
             lobe_res += res
 
+        print 'log likelihood', lobe_res
         return lobe_res
 
     def logprior(self, pars_array):
@@ -69,20 +70,20 @@ class PoissonPosterior(object):
         for i, item in enumerate(self.lobe_data):
             
             pars = pars_array[i,:] # 2D pars array [i,j], i=reg nr, j=par nr
-            print pars
+            #print pars
             
             # Gaussian priors for kT and Z, based on fit result of surrounding region
             kT = pars[0]
             mu_kT = kT_prior[i,0]
             sigma_kT = kT_prior[i,1]
             p_kT = norm.pdf(kT, loc=mu_kT, scale=sigma_kT)
-            if (kT > mu_kT+1) or (kT < mu_kT-1): p_kT = 0
+            #if (kT > mu_kT+1.5) or (kT < mu_kT-1.5): p_kT = 0
 
             Z = pars[1]
             mu_Z = Z_prior[i,0]
             sigma_Z = Z_prior[i,1]
             p_Z = norm.pdf(Z, loc=mu_Z, scale=sigma_Z)
-            if Z < mu_Z -0.2 or Z > mu_Z+0.2: p_Z = 0
+            #if Z < mu_Z -0.2 or Z > mu_Z+0.2: p_Z = 0
 
             T_lognorm = np.log10(pars[2])
             p_Tnorm = ((T_lognorm > -7) & (T_lognorm < -3))
@@ -90,21 +91,28 @@ class PoissonPosterior(object):
             PL_lognorm = np.log10(pars[4])
             p_PLnorm = ((PL_lognorm > -9) & (PL_lognorm <-4))
             
-            print p_kT, p_Z, p_Tnorm, p_PLnorm
+            #print 'Priors:', p_kT, p_Z, p_Tnorm, p_PLnorm
             
-            logprior += np.log(p_kT * p_Z * p_Tnorm * p_PLnorm)
-            print 'logprior', logprior
+            logprior_reg = np.log(p_kT * p_Z * p_Tnorm * p_PLnorm)
+            if not np.isfinite(logprior_reg):
+                logprior += -logmin
+            else:
+                logprior += logprior_reg
+            
+            #print 'logprior', logprior
         
         # PI prior (shared between lobe regions)
         PI = pars_array[0,3]
         p_PI = (( PI > 1.0) & (PI < 2.5))
         
-        logprior += np.log(p_PI)
-        
-        if not np.isfinite(logprior):
-            return -logmin
+        logprior_PI = np.log(p_PI)
+
+        if not np.isfinite(logprior_PI):
+            logprior += -logmin
         else:
-            return logprior
+            logprior += logprior_PI
+        print 'Log prior', logprior
+        return logprior
 
     def logposterior(self, pars_array, neg=False):
         # reshape pars_array into a 2D array because scipy.optimize only accepts 1D array
@@ -112,6 +120,7 @@ class PoissonPosterior(object):
         pars_array = pars_array.reshape(self.regnr,5) # 5=nr of lobe region thawed params
         lpost = self.loglikelihood(pars_array) + self.logprior(pars_array)
         
+    
         if neg is True:
             print 'lpost ', -lpost
             return -lpost
@@ -226,7 +235,12 @@ fitmethod = scipy.optimize.minimize
 neg = True
 results = fitmethod(lpost,x0=initial_guess,method='Nelder-mead', options={'maxiter':5000}, args=(neg,))
 
+#results = fitmethod(lpost,x0=initial_guess, maxiter=200, args=(neg,))
+
+
+print lpost(results.x, neg=neg)
 print 'Results :'
+
 pars = results.x.reshape(regnr,5)
 
 print 'Temperatures:', pars[:,0]
@@ -234,6 +248,7 @@ print 'Abundances:' , pars[:,1]
 print 'Therm Norm:', pars[:,2]
 print 'PI', pars[0,3]
 print 'PL Norm:', pars[:,4]
+
 # Plot of fits
 for i, item in enumerate(lobe_data):
     ax = plt.subplot('22' + str(i))
