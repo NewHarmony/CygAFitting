@@ -1,5 +1,6 @@
 #!usr/bin/env python
 
+import corner
 import emcee
 import logging
 from matplotlib import pyplot as plt
@@ -270,9 +271,9 @@ start_pars = np.array([4.93267106, 0.27263125, -8.77750573, 1.22546794, -11.4587
 start_cov = np.diag(np.abs(start_pars/100))
 
 nwalkers = 100
-niter = 20
+niter = 250
 ndim = len(start_pars)
-burnin = 10
+burnin = 40
 
 p0 = np.array([np.random.multivariate_normal(start_pars, start_cov) for
                i in range(nwalkers)])
@@ -287,19 +288,23 @@ flatchain = sampler.flatchain
 
 
 # Is this a good way to show stuff? The only parameter shared between regions is PI, so I figure that it's most useful to show things per region
+"""
 plt.figure(1)
-plt.title('lobe region 1')
 scatter_plot(flatchain[:,[0,1,2,3,4]], 5)
                        
 plt.figure(2)
-plt.title('lobe region 2')
 scatter_plot(flatchain[:,[5,6,7,4,9]], 5)
 
 plt.figure(3)
-plt.title('lobe region 3')
 scatter_plot(flatchain[:,[10,11,12,4,14]], 5)
 
+plt.show()
+"""
 
-                       
+fig1 = corner.corner(flatchain[:,[0,1,2,3,4]], quantiles=[0.16, 0.5, 0.84], show_titles=True, title_args={"fontsize": 12})
+
+fig2 = corner.corner(flatchain[:,[5,6,7,4,9]], quantiles=[0.16, 0.5, 0.84], show_titles=True, title_args={"fontsize": 12})
+
+fig3 = corner.corner(flatchain[:,[10,11,12,4,14]], quantiles=[0.16, 0.5, 0.84], show_titles=True, title_args={"fontsize": 12})
 
 plt.show()
