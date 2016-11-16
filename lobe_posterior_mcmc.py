@@ -270,9 +270,9 @@ start_pars = np.array([4.93267106, 0.27263125, -8.77750573, 1.22546794, -11.4587
 start_cov = np.diag(np.abs(start_pars/100))
 
 nwalkers = 100
-niter = 250
+niter = 20
 ndim = len(start_pars)
-burnin = 50
+burnin = 10
 
 p0 = np.array([np.random.multivariate_normal(start_pars, start_cov) for
                i in range(nwalkers)])
@@ -285,10 +285,21 @@ _, _, _ = sampler.run_mcmc(pos, niter, rstate0=state)
 
 flatchain = sampler.flatchain
 
-# cut out 'empty params'
-scatter_plot(flatchain[:,[0,1,2,3,4,5,6,7,9,10,11,12,14]], 13)
 
-#print 'Flatchain kT1:', flatchain[:,0]
-#print 'Flatchain Z1:', flatchain[:,1]
+# Is this a good way to show stuff? The only parameter shared between regions is PI, so I figure that it's most useful to show things per region
+plt.figure(1)
+plt.title('lobe region 1')
+scatter_plot(flatchain[:,[0,1,2,3,4]], 5)
+                       
+plt.figure(2)
+plt.title('lobe region 2')
+scatter_plot(flatchain[:,[5,6,7,4,9]], 5)
+
+plt.figure(3)
+plt.title('lobe region 3')
+scatter_plot(flatchain[:,[10,11,12,4,14]], 5)
+
+
+                       
 
 plt.show()
