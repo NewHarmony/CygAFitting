@@ -12,7 +12,7 @@ from sherpa.astro.ui import *
 import sys
 
 
-from lobe_posterior.py import * # so it uses the exact same class as the fitting routine
+from lobe_posterior import * # so it uses the exact same class as the fitting routine
 
 
 logger = logging.getLogger("sherpa") #Logger to suppress sherpa output when loading spectra
