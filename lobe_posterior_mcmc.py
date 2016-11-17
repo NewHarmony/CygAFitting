@@ -12,158 +12,14 @@ from sherpa.astro.ui import *
 import sys
 
 
+from lobe_posterior.py import * # so it uses the exact same class as the fitting routine
+
+
 logger = logging.getLogger("sherpa") #Logger to suppress sherpa output when loading spectra
 
 
-## function that makes the scatter plot
-def scatter_plot(samples, ndims):
-    fig, axes = plt.subplots(ndims,ndims,figsize=(15,15))
-    
-    ### for one-parameter model, make scatter plot
-    if ndims == 1:
-        axes.hist(samples, bins=20)
-    
-    ### for more than one parameter, make matrix plot
-    else:
-        for i in xrange(ndims): ## x dimension
-            for j in xrange(ndims): ## y dimension
-                if i == j:
-                    axes[i,j].hist(samples[:,i], bins=20)
-                else:
-                    axes[i,j].scatter(samples[:,i], samples[:,j], color="black")
-
-    return
-
 # Only lobe regions so far (will expand later)
 logmin = 1000000000.0
-class PoissonPosterior(object):
-    
-    def __init__(self, d, m, rmf,  kT_prior, Z_prior):
-        # lobe_data and lobe_models are lists
-        self.lobe_data = d
-        self.lobe_models = m
-        self.lobe_rmf = rmf
-        self.kT_prior = kT_prior
-        self.Z_prior = Z_prior
-        self.e_min = 0.5
-        self.e_max = 7.0 # energy range to fit
-        self.regnr = len(d) # amount of lobe regions
-
-
-        # Check if lengths of the data list, model list and the prior arrays are the same
-        if not all(x == self.regnr for x in (len(d), len(m), len(rmf), kT_prior.shape[0], Z_prior.shape[0])):
-            raise Exception('Error: length of data list, model list, and prior arrays must be the same')
-        return
-    
-    def loglikelihood(self, pars_list, neg=False):
-
-
-        pars_list[:,3] = pars_list[0,3] # PI shared between all lobe regions
-
-        # Iterate over individual lobe region log-likelihoods and sum
-        lobe_res = 0
-        for i, item in enumerate(self.lobe_data):
-            
-            rmf = lobe_data[i].get_rmf()
-            erange = np.array(rmf.e_min) # need to convert to numpy array to use a double mask
-            bounds = (erange > self.e_min) & (erange < self.e_max)
-            
-            model = self.lobe_models[i]
-            data = self.lobe_data[i]
-            pars = pars_list[i,:]
-            
-            # assume that normalizations are in log, so we'll exponentiate them:
-            pars[2] = np.exp(pars[2])
-            pars[4] = np.exp(pars[4])
-            
-            model._set_thawed_pars(pars)
-            mean_model = data.eval_model(model)
-            
-            #stupid hack to make it not go -infinity
-            mean_model += np.exp(-20.)
-            res = np.nansum(-mean_model[bounds] + data.counts[bounds]*np.log(mean_model[bounds]) -  scipy_gammaln(data.counts[bounds] + 1.))
-            
-            # Set the normalizations back to log (for the priors)
-            pars[2] = np.log(pars[2])
-            pars[4] = np.log(pars[4])
-            
-            if not np.isfinite(res):
-                res = -logmin
-            lobe_res += res
-
-        print('log likelihood' + str(lobe_res))
-        if neg:
-            return -lobe_res
-        else:
-            return lobe_res
-
-    def logprior(self, pars_array):
-    
-        # Iterate over individual lobe region log-priors and sum
-        logprior = 0
-        for i, item in enumerate(self.lobe_data):
-            
-            pars = pars_array[i,:] # 2D pars array [i,j], i=reg nr, j=par nr
-            #print('Pars: ' + str(pars))
-            
-            # Gaussian priors for kT and Z, based on fit result of surrounding region
-            kT = pars[0]
-            mu_kT = kT_prior[i,0]
-            sigma_kT = kT_prior[i,1]
-            p_kT = norm.pdf(kT, loc=mu_kT, scale=sigma_kT)
-            if (kT > mu_kT+1.5) or (kT < mu_kT-1.5): p_kT = 0
-
-            Z = pars[1]
-            mu_Z = Z_prior[i,0]
-            sigma_Z = Z_prior[i,1]
-            p_Z = norm.pdf(Z, loc=mu_Z, scale=sigma_Z)
-            if Z < 0 or Z >1 : p_Z = 0
-
-            T_lognorm = pars[2]
-            p_Tnorm = ((T_lognorm > -15) & (T_lognorm < -3))
-            
-            PL_lognorm = pars[4]
-            p_PLnorm = ((PL_lognorm > -15) & (PL_lognorm <-4))
-            
-            #print 'Priors:', p_kT, p_Z, p_Tnorm, p_PLnorm
-            
-            logprior_reg = np.log(p_kT * p_Z * p_Tnorm * p_PLnorm)
-            if not np.isfinite(logprior_reg):
-                logprior += -logmin
-            else:
-                logprior += logprior_reg
-    
-        # PI prior (shared between lobe regions)
-        PI = pars_array[0,3]
-        p_PI = (( PI > 1.0) & (PI < 2.5))
-        
-        logprior_PI = np.log(p_PI)
-
-        if not np.isfinite(logprior_PI):
-            logprior += -logmin
-        else:
-            logprior += logprior_PI
-
-        print('Log prior' + str(logprior))
-        return logprior
-
-    def logposterior(self, pars_array, neg=False):
-        # reshape pars_array into a 2D array because scipy.optimize only accepts 1D array
-        
-        pars_array = pars_array.reshape(self.regnr,5) # 5=nr of lobe region thawed params
-        lpost = self.loglikelihood(pars_array) + self.logprior(pars_array)
-        
-    
-        if neg is True:
-            print('lpost ' + str(-lpost))
-            return -lpost
-        else:
-            print('lpost' + str(lpost))
-            return lpost
-    
-    def __call__(self, pars_array, neg=False):
-        return self.logposterior(pars_array, neg)
-
 
 # switch off sherpa file-loading output
 logger.setLevel(logging.WARN)
@@ -233,21 +89,21 @@ kT_prior = np.zeros((regnr, 2))
 Z_prior = np.zeros((regnr,2))
 
 # build kT_prior and Z_prior matrices (i,0 = mu; i,1 = sigma)
-# Simplified version for now: kT_avg = (kT_1 + kT_2)/2
-# fkT_avg = fkT_1 + abs((kT_avg - kT_1))
-# Maybe its better to just do a joint fit to the top and bottom thermal region
+# Simple version for now: kT_avg = (kT_1 + kT_2)/2
+# fkT_avg = sqrt(fkT_1**2 + fkT_2**2)
 for i in range(regnr):
     j = i*6
     
     kT_avg = (covar_result.parvals[0+j] + covar_result.parvals[3+j])/2.
     kT_prior[i, 0] = kT_avg
-    fkT_avg = covar_result.parmaxes[0+j] + (np.abs(kT_avg - covar_result.parvals[0+j]))
-    kT_prior[i, 1] = fkT_avg/5 # cheap trick to fix temp/Z a bit more
-
+    fkT_avg = np.sqrt(covar_result.parmaxes[0+j]**2 + covar_result.parmaxes[3+j]**2)
+    kT_prior[i, 1] = fkT_avg/2
+    
     Z_avg = (covar_result.parvals[1+j] + covar_result.parvals[4+j])/2.
     Z_prior[i, 0] = Z_avg
-    fZ_avg = covar_result.parmaxes[1+j] + (np.abs(Z_avg - covar_result.parvals[1+j]))
-    Z_prior[i, 1] =  fZ_avg/10
+    fZ_avg = np.sqrt(covar_result.parmaxes[1+j]**2 + covar_result.parmaxes[4+j]**2)
+    Z_prior[i, 1] =  fZ_avg/2
+
 
 
 
@@ -263,7 +119,7 @@ lpost = PoissonPosterior(lobe_data, lobe_models, lobe_rmf, kT_prior, Z_prior)
 
 
 # Best-fit parameters of 3 lobe regions fit
-start_pars = np.array([4.93267106, 0.27263125, -8.77750573, 1.22546794, -11.45876729, 6.3437716,   0.50333696, -8.13363911, 1.22546794, -11.64686045, 6.26648673, 0.66538454, -7.86290784, 1.22546794, -13.61277446])
+start_pars = np.array([5.9983775, 0.48645429, -8.67181377, 1.39615739, -12.0427719, 5.37033591, 0.52261251, -8.28872141, 1.39615739, -10.82143326, 5.0715555, 0.53349356, -8.30533869, 1.39615739, -10.24779775])
 
 
 #MCMC
@@ -273,7 +129,7 @@ start_cov = np.diag(np.abs(start_pars/100))
 nwalkers = 100
 niter = 250
 ndim = len(start_pars)
-burnin = 40
+burnin = 50
 
 p0 = np.array([np.random.multivariate_normal(start_pars, start_cov) for
                i in range(nwalkers)])
@@ -288,23 +144,12 @@ flatchain = sampler.flatchain
 
 
 # Is this a good way to show stuff? The only parameter shared between regions is PI, so I figure that it's most useful to show things per region
-"""
-plt.figure(1)
-scatter_plot(flatchain[:,[0,1,2,3,4]], 5)
-                       
-plt.figure(2)
-scatter_plot(flatchain[:,[5,6,7,4,9]], 5)
 
-plt.figure(3)
-scatter_plot(flatchain[:,[10,11,12,4,14]], 5)
 
-plt.show()
-"""
+fig1 = corner.corner(flatchain[:,[0,1,2,3,4]], quantiles=[0.16, 0.5, 0.84], show_titles=True, title_args={"fontsize": 12}, labels=['kT', 'Z', '$T_{norm}$', 'PI', '$PL_{norm}$'])
 
-fig1 = corner.corner(flatchain[:,[0,1,2,3,4]], quantiles=[0.16, 0.5, 0.84], show_titles=True, title_args={"fontsize": 12})
+fig2 = corner.corner(flatchain[:,[5,6,7,3,9]], quantiles=[0.16, 0.5, 0.84], show_titles=True, title_args={"fontsize": 12}, labels=['kT', 'Z', '$T_{norm}$', 'PI', '$PL_{norm}$'])
 
-fig2 = corner.corner(flatchain[:,[5,6,7,4,9]], quantiles=[0.16, 0.5, 0.84], show_titles=True, title_args={"fontsize": 12})
-
-fig3 = corner.corner(flatchain[:,[10,11,12,4,14]], quantiles=[0.16, 0.5, 0.84], show_titles=True, title_args={"fontsize": 12})
+fig3 = corner.corner(flatchain[:,[10,11,12,3,14]], quantiles=[0.16, 0.5, 0.84], show_titles=True, title_args={"fontsize": 12}, labels=['kT', 'Z', '$T_{norm}$', 'PI', '$PL_{norm}$'])
 
 plt.show()
