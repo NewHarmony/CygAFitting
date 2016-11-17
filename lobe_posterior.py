@@ -10,6 +10,7 @@ from sherpa.astro.ui import *
 import sys
 
 
+logmin = 1000000000.0
 
 class PoissonPosterior(object):
     
@@ -39,7 +40,7 @@ class PoissonPosterior(object):
         lobe_res = 0
         for i, item in enumerate(self.lobe_data):
             
-            rmf = lobe_data[i].get_rmf()
+            rmf = self.lobe_data[i].get_rmf()
             erange = np.array(rmf.e_min) # need to convert to numpy array to use a double mask
             bounds = (erange > self.e_min) & (erange < self.e_max)
             
@@ -83,14 +84,14 @@ class PoissonPosterior(object):
             
             # Gaussian priors for kT and Z, based on fit result of surrounding region
             kT = pars[0]
-            mu_kT = kT_prior[i,0]
-            sigma_kT = kT_prior[i,1]
+            mu_kT = self.kT_prior[i,0]
+            sigma_kT = self.kT_prior[i,1]
             p_kT = norm.pdf(kT, loc=mu_kT, scale=sigma_kT)
             if (kT > mu_kT+1.5) or (kT < mu_kT-1.5): p_kT = 0
 
             Z = pars[1]
-            mu_Z = Z_prior[i,0]
-            sigma_Z = Z_prior[i,1]
+            mu_Z = self.Z_prior[i,0]
+            sigma_Z = self.Z_prior[i,1]
             p_Z = norm.pdf(Z, loc=mu_Z, scale=sigma_Z)
             if Z < 0 or Z >1 : p_Z = 0
 
@@ -147,8 +148,6 @@ class PoissonPosterior(object):
 if __name__ == '__main__': # So that I can call the PoissonPosterior class from other scripts
     logger = logging.getLogger("sherpa") #Logger to suppress sherpa output when loading spectra
 
-    # Only lobe regions so far (will expand later)
-    logmin = 1000000000.0
 
     # switch off sherpa file-loading output
     logger.setLevel(logging.WARN)
