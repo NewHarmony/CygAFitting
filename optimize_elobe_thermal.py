@@ -9,7 +9,7 @@ from scipy.special import gammaln as scipy_gammaln
 from sherpa.astro.ui import *
 import sys
 
-from lobe_jet_posterior import *
+from lobe_jet_posterior_thermal import *
 
 """
     Script to optimize the jet+lobe spectra of the eastern lobe of Cygnus A
@@ -52,14 +52,12 @@ if __name__ == '__main__':
             ignore_id(i, 6.98, None)
 
         if i % 4 == 2:      # Lobe regions 1 - 9 (2,6,10,14,18,22,26,30,34)
-            set_source(i, 'xsphabs.abs1 * (xsapec.plsm' + str(i) + ' + xspowerlaw.pow' + str(i) + ')' )
-            if i == 1: set_par('pow' + str(i) + '.PhoIndex', 1.6, min=1.0, max=2.2)
+            set_source(i, 'xsphabs.abs1 * (xsapec.plsm' + str(i) + ')' )
             set_par('plsm' + str(i) + '.redshift', 0.0562)
             thaw('plsm' + str(i) + '.Abundanc')
     
         if i % 4 == 3:     # Jet regions 1 - 9  (3,7,11,15,19,23,27,31,35)
-            set_source(i, 'xsphabs.abs1 * (xsapec.plsm' + str(i) + ' + xspowerlaw.pow' + str(i-1) + '+ xspowerlaw.pow' + str(i) +  ')' )
-            if i == 1: set_par('pow' + str(i) + '.PhoIndex', 1.6, min=1.0, max=2.2)
+            set_source(i, 'xsphabs.abs1 * (xsapec.plsm' + str(i)  +')' )
             set_par('plsm' + str(i) + '.redshift', 0.0562)
             thaw('plsm' + str(i) + '.Abundanc')
 
@@ -136,23 +134,23 @@ if __name__ == '__main__':
         jet_models.append(get_model(jet_nr))
         jet_rmf.append(get_rmf(jet_nr))
 
-    lpost = PoissonPosterior(lobe_data, lobe_models, lobe_rmf, jet_data, jet_models, jet_rmf, kT_prior, Z_prior, ratios=ratios)
+    lpost = PoissonPosterior(lobe_data, lobe_models, lobe_rmf, jet_data, jet_models, jet_rmf, kT_prior, Z_prior)
 
-    lobe_guess = np.zeros((regnr,5))
+    lobe_guess = np.zeros((regnr,3))
     for i in range(regnr): # reasonable initial guesses for lobe params
         # Initial guesses based off just the lobe fits
-        if i == 0: lobe_guess[i,:] = [6.58, 0.57, 1e-4, 1.60, 1e-5]
-        elif i == 1: lobe_guess[i,:] = [6.70, 0.56, 1e-4, 1.60, 1e-5]
-        elif i == 2: lobe_guess[i,:] = [6.64, 0.70, 1e-4, 1.60, 1e-5]
-        elif i == 3: lobe_guess[i,:] = [5.50, 0.70, 1e-4, 1.60, 1e-5]
+        if i == 0: lobe_guess[i,:] = [6.58, 0.57, 1e-4]
+        elif i == 1: lobe_guess[i,:] = [6.70, 0.56, 1e-4]
+        elif i == 2: lobe_guess[i,:] = [6.64, 0.70, 1e-4]
+        elif i == 3: lobe_guess[i,:] = [5.50, 0.70, 1e-4]
         else: lobe_guess[i,:] = [6.0, 0.5, 1e-4, 1.6, 1e-5]
 
-    jet_guess = np.zeros((regnr, 7))
+    jet_guess = np.zeros((regnr, 3))
     for i in range(regnr): # reasonable initial guesses for jet params
-        if i == 0: jet_guess[i,:] =  [6.39, 0.63 , 1e-4, 1.60, 1e-5, 1.55, 2e-5]
-        elif i == 1: jet_guess[i,:] = [6.82, 0.51, 1e-4, 1.60, 1e-5, 1.55, 2e-5]
-        elif i == 2: jet_guess[i,:] = [6.64, 0.70, 1e-4, 1.60, 1e-5, 1.55, 2e-5]
-        elif i == 3: jet_guess[i,:] = [6.01, 0.71, 1e-4, 1.60, 1e-5, 1.55, 2e-5]
+        if i == 0: jet_guess[i,:] =  [6.39, 0.63 , 1e-4]
+        elif i == 1: jet_guess[i,:] = [6.82, 0.51, 1e-4]
+        elif i == 2: jet_guess[i,:] = [6.64, 0.70, 1e-4]
+        elif i == 3: jet_guess[i,:] = [6.01, 0.71, 1e-4]
         else: jet_guess[i,:] = [6.64, 0.70, 1e-4, 1.60, 1e-5, 1.55, 2e-5]
 
 
@@ -161,80 +159,50 @@ if __name__ == '__main__':
     # flatten everything into one big 1D array for scipy.optimize. The 2D arrays are recovered inside logposterior function
     init_guess = np.hstack((lobe_guess.flatten(), jet_guess.flatten()))
 
-    init_guess = np.array([  6.49168488e+00,   6.66481970e-01,   1.26693584e-04,
-                       1.58558954e+00,   1.63673954e-05,   6.84124953e+00,
-                       5.39395469e-01,   3.15038828e-04,   1.58558954e+00,
-                       4.90156302e-06,   6.84417576e+00,   6.80733772e-01,
-                       3.87197829e-04,   1.58558954e+00,   4.01683254e-08,
-                       6.05127326e+00,   7.02385451e-01,   4.07155933e-04,
-                       1.58558954e+00,   5.54162907e-09,   6.41487738e+00,
-                       5.72041038e-01,   1.42378401e-04,   1.58558954e+00,
-                       7.35221606e-09,   1.53740375e+00,   1.49482613e-05,
-                       6.79103444e+00,   5.35821553e-01,   1.21243343e-04,
-                       1.58558954e+00,   8.58145147e-06,   1.53740375e+00,
-                       9.35122789e-06,   6.59050701e+00,   7.65108733e-01,
-                       1.46779285e-04,   1.58558954e+00,   2.73608589e-08,
-                       1.53740375e+00,   1.19275380e-05,   6.05909044e+00,
-                       6.98429457e-01,   1.54271731e-04,   1.58558954e+00,
-                       2.96583924e-08,   1.53740375e+00,   1.15422200e-05,
-                       1.30181914e-04,   1.01173281e-07,   9.50723904e-06])
+    init_guess =  np.array([  6.75169128e+00,   5.24436896e-01,   1.94234942e-04,
+                     6.85679003e+00,   5.16508341e-01,   3.36226951e-04,
+                     6.84446262e+00,   6.79967110e-01,   3.87565574e-04,
+                     6.05968370e+00,   7.05262667e-01,   4.06884898e-04,
+                     6.77615959e+00,   4.88895506e-01,   2.05183734e-04,
+                     7.11495430e+00,   4.52354438e-01,   1.95664953e-04,
+                     6.75439828e+00,   6.72390340e-01,   1.96717022e-04,
+                     6.24757298e+00,   6.64952568e-01,   2.00948105e-04, 1e-4])
 
-    #Optimization routine
     fitmethod = scipy.optimize.minimize
 
     min_method = 'Nelder-Mead'
 
     neg = True
-    results = fitmethod(lpost,x0=init_guess,method=min_method, args=(neg,), tol=1e-7)
+    results = fitmethod(lpost,x0=init_guess,method=min_method, args=(neg,), tol=1e-3)
 
 
     if min_method == 'BFGS':
         hess_inv = results.hess_inv
-        np.savetxt('hess_inv_elobe.txt', hess_inv)
+        np.savetxt('hess_inv_elobe_therm.txt', hess_inv)
 
 
     print 'full results:', results
 
-    lobe_results = results.x[0:regnr*5]
-    jet_results = results.x[regnr*5:regnr*12]
-    hyper_params = results.x[regnr*12:]
+    lobe_results = results.x[0:regnr*3]
+    jet_results = results.x[regnr*3:-1]
 
 
-    pars = lobe_results.reshape(regnr,5)
-    jet_pars = jet_results.reshape(regnr, 7)
+    pars = lobe_results.reshape(regnr,3)
+    jet_pars = jet_results.reshape(regnr, 3)
 
 
-    #re-link PL:
-    pars[:,3] = pars[0,3]
-    jet_pars[:,3] = pars[:,3]
-    jet_pars[:,5] = jet_pars[0,5]
-
-    """
-    #re-link kT:
-    for i in range(regnr):
-        jet_pars[i,0] = pars[i,0]
-        jet_pars[i,1] = pars[i,1]
-    """
 
     print('Lobe Results :')
     print('Temperatures:', pars[:,0])
     print('Abundances:' , pars[:,1])
     print('Therm Norm:', pars[:,2])
-    print('PI', pars[0,3])
-    print('PL Norm:', pars[:,4])
 
     print ('Jet Results :')
     print('Temperatures:', jet_pars[:,0])
     print('Abundances :', jet_pars[:,1])
-
     print('Therm Norm:', jet_pars[:,2])
-    print('PI1', jet_pars[0,3])
-    print('PL Norm1:', jet_pars[:,4])
-    print('PI2', jet_pars[0,5])
-    print('PL Norm2:', jet_pars[:,6])
 
-
-    print('Hyper Params:', hyper_params)
+    print('Hyper pars:', results.x[-1])
 
     # Plot of lobe fits
     fig, axarr = plt.subplots(nrows=2, ncols=len(lobe_data), sharex=True, figsize=(23,10))
@@ -256,7 +224,7 @@ if __name__ == '__main__':
         ax1.errorbar(lobe_rmf[i].e_min, lobe_data[i].counts, yerr=np.sqrt(lobe_data[i].counts), label='Data', fmt='o', ecolor='g', markersize=2)
         
         # Plot model with pars from scipy.optimize
-        lobe_models[i]._set_thawed_pars(results.x[i*5:(i*5)+5])
+        lobe_models[i]._set_thawed_pars(results.x[i*3:(i*3)+3])
         model_counts = lobe_data[i].eval_model(lobe_models[i])
         ax1.plot(lobe_rmf[i].e_min, model_counts, label='Model', c='r')
         
@@ -299,8 +267,8 @@ if __name__ == '__main__':
         ax1.errorbar(jet_rmf[i].e_min, jet_data[i].counts, yerr=np.sqrt(jet_data[i].counts), label='Data', fmt='o', ecolor='g', markersize=2)
         
         # Plot model with pars from scipy.optimize
-        ind = regnr*5
-        jet_models[i]._set_thawed_pars(results.x[ind + i*7:ind +(i*7)+7])
+        ind = regnr*3
+        jet_models[i]._set_thawed_pars(results.x[ind + i*3:ind +(i*3)+3])
         model_counts = jet_data[i].eval_model(jet_models[i])
         ax1.plot(jet_rmf[i].e_min, model_counts, label='Model', c='r')
         
